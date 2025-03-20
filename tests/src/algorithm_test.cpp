@@ -17,6 +17,9 @@ void test_rewriting(const char* input, const char* expected, bool can_rewrite = 
   auto rewritten = decompose_set_constraints(*f, set2bool_vars);
   EXPECT_EQ(rewritten.has_value(), can_rewrite);
   auto expect = parse_flatzinc_str<standard_allocator>(expected);
+  expect->print();
+  printf("\n\n");
+  rewritten.value().print();
   EXPECT_TRUE(expect);
   EXPECT_EQ(*rewritten, *expect);
 }
@@ -30,15 +33,34 @@ TEST(AST, SetRewritingDomain1) {
   );
 }
 
-// TEST(AST, SetRewritingDomain2) {
-//   test_rewriting(
-//     "var set of {-1, 1, 3}: S;",
+TEST(AST, SetRewritingDomain2) {
+  test_rewriting(
+    "var set of {-1, 1, 3}: S;",
 
-//     "var bool: __S_contains_m1;\
-//      var bool: __S_contains_1;\
-//      var bool: __S_contains_3;"
-//   );
-// }
+    "var bool: __S_contains_m1;\
+     var bool: __S_contains_1;\
+     var bool: __S_contains_3;"
+  );
+}
+
+TEST(AST, SetRewritingDomain3) {
+  test_rewriting(
+    "var set of {-1}: S;",
+
+    "var bool: __S_contains_m1;"
+  );
+}
+
+TEST(AST, SetRewritingDomain4) {
+  test_rewriting(
+    "var set of 1..4: S;",
+
+    "var bool: __S_contains_1;\
+     var bool: __S_contains_2;\
+     var bool: __S_contains_3;\
+     var bool: __S_contains_4;"
+  );
+}
 
 // TEST(AST, SetRewritingMembership) {
 //   test_rewriting(
