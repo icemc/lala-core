@@ -978,35 +978,12 @@ CUDA F decompose_subeq_constraint(const F& f, const typename F::allocator_type& 
   return f;
 }
 
-// template <class F>
-// CUDA F decompose_set2bools(const F& f, const typename F::allocator_type& alloc = typename F::allocator_type()) {
-//   if(f.is_binary() && f.sig() == SUBSETEQ && f.seq(1).is(F::S)) {
-//     const auto& set = f.seq(1).s();
-//     if(set.size() == 1) {
-//       return impl::itv_to_vars(f.seq(0), set[0], alloc);
-//     }
-//     else {
-//       typename F::Sequence conjunction(alloc);
-//       conjunction.reserve(set.size());
-//       for(size_t i = 0; i < set.size(); ++i) {
-//         conjunction.push_back(impl::itv_to_vars(f.seq(0), set[i], alloc));
-//       }
-//       return F::make_nary(AND, std::move(conjunction), f.type());
-//     }
-//   }
-//   return f;
-// }
-
 template <class F>
 CUDA F decompose_set2bools(const F& f, std::map<std::string, std::vector<std::string>>& set2bool_vars, const typename F::allocator_type& alloc = typename F::allocator_type()) {
   //TODO check if formula is set variable definiton
 
   if(f.is(F::Seq) || f.is(F::S)) {
     const auto& reduced = reduce_set_formula(f);
-
-    printf("\n");
-    reduced.print();
-    printf("\n");
 
     if(reduced.is_binary() && reduced.sig() == AND) {
       return F::make_binary(
@@ -1064,47 +1041,7 @@ std::optional<F> decompose_set_constraints(const F& f, std::map<std::string, std
   // Input string -> "var set of 1..2: S;"
   //Formula print -> (var S:S(Z) /\ (S ∈ {[{}..{[1..2]}]}))
 
-  // TODO, to solve the issue of contraints and set variables being used in this function we could start by detecting varible definitions and set contraints
-  //For variable definitions we can decompose to boolean contraints and then convert them to boolean variables (this could enable us reuses the functions with the other set contraints)
-  //For the set contraints we can decompose them to boolean contraints. This would mean we reuse the functions for both set contraint and varible assigment but peform an extra step for variable assignment.
-  
-  //Check if we are dealing with a set
-  // if(f.is(F::Seq) || f.is(F::S)) {
-
-  //   //Check binary relationship 
-
-
-  //   //Attempt to reduce the formula
-  //   const auto& reduced = reduce_set_formula(f);
-  //   // const auto& reduced = f;
-
-    
-
-  //   if(reduced.is_binary() && reduced.sig() == AND) {
-  //     return F::make_binary(
-  //       decompose_set_constraints(reduced.seq(0), set2bool_vars).value(),
-  //       AND,
-  //       decompose_set_constraints(reduced.seq(1), set2bool_vars).value(),
-  //       reduced.type());
-  //   } else if (reduced.is_binary() && reduced.sig() == OR) {
-  //     return F::make_binary(
-  //       decompose_set_constraints(reduced.seq(0), set2bool_vars).value(),
-  //       OR,
-  //       decompose_set_constraints(reduced.seq(1), set2bool_vars).value(),
-  //       reduced.type());
-  //   } else if (reduced.is_binary() && reduced.sig() == IN) {
-  //     return decompose_set_constraints(decompose_in_constraint(reduce_set_formula(reduced)), set2bool_vars);
-  //   } else if (reduced.is_binary() && reduced.sig() == SUBSETEQ) {
-  //     return decompose_set_constraints(decompose_set2bools(reduce_set_formula(reduced)), set2bool_vars);
-  //   } else {
-  //     return reduced;
-  //   }
-  //   //TODO Add more set fuctions
-
-  // } else {
-  //   printf("If condition failed, ID is: %ld\n,", f.index());
-  //   return f;
-  // }
+  f.print();
   
   return decompose_set2bools(f, set2bool_vars);
 }
@@ -1122,11 +1059,11 @@ CUDA F reduce_set_formula(const F& f) {
     //Remove empty superset
     else if(f.is_binary() && f.sig() == AND && f.seq(0).sig() == SUPSETEQ && f.seq(0).seq(1).s().size() == 0) {
       return f.seq(1);
-    } else {
-      return f;
-    }
+    } 
     //TODO add other reduction scenarios here
-  } else return f;
+  } 
+  
+  return f;
 }
 
 /** Given an interval occuring in a set (LogicSet), we decompose it boolean variables. */
