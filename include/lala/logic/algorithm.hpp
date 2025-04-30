@@ -959,6 +959,65 @@ CUDA F decompose_in_constraint(const F& f, const typename F::allocator_type& all
   return f;
 }
 
+template <class F>
+CUDA F decompose_subeq_constraint(const F& f, const typename F::allocator_type& alloc = typename F::allocator_type()) {
+  if(f.is_binary() && f.sig() == SUBSETEQ && f.seq(1).is(F::S)) {
+    const auto& set = f.seq(1).s();
+    if(set.size() == 1) {
+      return impl::itv_to_formula(f.seq(0), set[0], alloc);
+    }
+    else {
+      typename F::Sequence conjunction(alloc);
+      conjunction.reserve(set.size());
+      for(size_t i = 0; i < set.size(); ++i) {
+        conjunction.push_back(impl::itv_to_formula(f.seq(0), set[i], alloc));
+      }
+      return F::make_nary(AND, std::move(conjunction), f.type());
+    }
+  }
+  return f;
+}
+
+template <class F>
+CUDA F decompose_set2bools(const F& f, std::map<std::string, std::vector<std::string>>& set2bool_vars, const typename F::allocator_type& alloc = typename F::allocator_type()) {
+  //TODO check if formula is set variable definiton
+
+  if(f.is(F::Seq) || f.is(F::S)) {
+    const auto& reduced = reduce_set_formula(f);
+
+    if(reduced.is_binary() && reduced.sig() == AND) {
+      return F::make_binary(
+        decompose_set2bools(reduced.seq(0), set2bool_vars, alloc),
+        AND,
+        decompose_set2bools(reduced.seq(1), set2bool_vars, alloc),
+        reduced.type());
+    } else if (reduced.is_binary() && reduced.sig() == OR) {
+      return F::make_binary(
+        decompose_set2bools(reduced.seq(0), set2bool_vars, alloc),
+        OR,
+        decompose_set2bools(reduced.seq(1), set2bool_vars, alloc),
+        reduced.type());
+    } else if (reduced.is_binary() && reduced.sig() == IN) {
+      return decompose_set2bools(decompose_in_constraint(reduce_set_formula(reduced), alloc), set2bool_vars, alloc);
+    } else if(reduced.is_binary() && reduced.sig() == SUBSETEQ && reduced.seq(1).is(F::S)) {
+      const auto& set = reduced.seq(1).s();
+      if(set.size() == 1) {
+        return itv_to_vars(reduced.seq(0), set[0], set2bool_vars, alloc);
+      }
+      else {
+        typename F::Sequence conjunction(alloc);
+        conjunction.reserve(set.size());
+        for(size_t i = 0; i < set.size(); ++i) {
+          conjunction.push_back(itv_to_vars(reduced.seq(0), set[i], set2bool_vars, alloc));
+        }
+        return F::make_nary(AND, std::move(conjunction), reduced.type());
+      }
+    }
+  }
+  
+  return f;
+}
+
 // Decompose `t != u` into a disjunction `t < u \/ t > u`.
 template <class F>
 CUDA F decompose_arith_neq_constraint(const F& f, const typename F::allocator_type& alloc = typename F::allocator_type()) {
@@ -979,7 +1038,59 @@ CUDA F decompose_arith_neq_constraint(const F& f, const typename F::allocator_ty
  */
 template <class F>
 std::optional<F> decompose_set_constraints(const F& f, std::map<std::string, std::vector<std::string>>& set2bool_vars) {
-  return {};
+  // Input string -> "var set of 1..2: S;"
+  //Formula print -> (var S:S(Z) /\ (S ∈ {[{}..{[1..2]}]}))
+
+  f.print();
+  
+  return decompose_set2bools(f, set2bool_vars);
+}
+
+//Detects useless left side set formula and removes it from the original binary formula. Else return original formula
+template <class F>
+CUDA F reduce_set_formula(const F& f) {
+  if(f.is(F::Seq)  || f.is(F::S)) {
+
+    //Probably a set variable definition. 
+    if(f.is_binary() && f.sig() == AND && f.seq(0).is(F::E)) {
+      return f.seq(1).is(F::E) == true ? f : f.seq(1);
+    }
+
+    //Remove empty superset
+    else if(f.is_binary() && f.sig() == AND && f.seq(0).sig() == SUPSETEQ && f.seq(0).seq(1).s().size() == 0) {
+      return f.seq(1);
+    } 
+    //TODO add other reduction scenarios here
+  } 
+  
+  return f;
+}
+
+/** Given an interval occuring in a set (LogicSet), we decompose it boolean variables. */
+template <class F>
+CUDA F itv_to_vars(const F& f, const battery::tuple<F, F>& itv, std::map<std::string, std::vector<std::string>>& set2bool_vars, const typename F::allocator_type& alloc = typename F::allocator_type()) {
+  const auto& [l, u] = itv;
+  auto setVar = f.lv().data();
+  auto baseName = std::string("__")
+              + setVar
+              + "_contains_";
+
+  if(l == u) {
+    auto fullName = baseName + (u.z() < 0 ? "m" + std::to_string(-u.z()) : std::to_string(u.z()));
+    // write boolean variable name to map
+    set2bool_vars[setVar].push_back(fullName);
+    return F::make_exists(f.type(), LVar<typename F::allocator_type>(fullName), Sort<typename F::allocator_type>::Bool);
+  } else {
+    typename F::Sequence conjunction(alloc);
+      conjunction.reserve(u.z() - l.z() + 1);
+      for(size_t i = l.z(); i <= u.z(); ++i) {
+        auto fullName = baseName + (i < 0 ? "m" + std::to_string(-i) : std::to_string(i));
+        conjunction.push_back(F::make_exists(f.type(), LVar<typename F::allocator_type>(fullName), Sort<typename F::allocator_type>::Bool));
+        // write boolean variable name to map
+        set2bool_vars[setVar].push_back(fullName);
+      }
+      return F::make_nary(AND, std::move(conjunction), f.type());
+  }
 }
 
 }
